@@ -18,7 +18,7 @@ import twixtools.geometry
 
 
 def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
-              parse_geometry=True, verbose=True, keep_syncdata_and_acqend=False):
+              parse_geometry=True, verbose=True, keep_syncdata_and_acqend=False, parse_pmu=False):
     """Function for reading siemens twix raw data files.
 
     Parameters
@@ -133,6 +133,7 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
         hdr_len = meas_init["hdr_len"]
         out.append(dict())
         out[-1]['mdb'] = list()
+        out[-1]['pmu'] = list()
         if parse_prot:
             fid.seek(pos, os.SEEK_SET)
             hdr = twixprot.parse_twix_hdr(fid)
@@ -151,7 +152,7 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
                 out[-1]['geometry'] = twixtools.geometry.Geometry(out[-1])
 
         # if data is not requested (headers only)
-        if not parse_data:
+        if not parse_data and not parse_pmu:
             continue
 
         pos = measOffset[s] + np.uint64(hdr_len)
@@ -166,10 +167,18 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
             except ValueError:
                 print(f"WARNING: Mdb parsing encountered an error at file position {pos}/{scanEnd}, stopping here.")
 
+            packet_id = mdb.data[4:mdb.data.find(b'\x00', 4)].decode('ascii') if len(mdb.data) > 60 else ''
+            is_pmu = packet_id == 'PMUData' or packet_id == 'PMULearnPhase'
+            if is_pmu and parse_pmu:
+                out[-1]['pmu'].append(mdb)
+
             # jump to mdh of next scan
             pos += mdb.dma_len
             if verbose:
                 progress_bar.update(mdb.dma_len)
+
+            if not parse_data:
+                continue
 
             if not keep_syncdata_and_acqend:
                 if mdb.is_flag_set('SYNCDATA'):
@@ -357,3 +366,12 @@ def del_from_mdb_list(mdb_list, function):
         del mdb_list[key]
 
     return
+
+
+def write_pmu(twix_scan: dict, filename: str):
+    pmu_end = b'\xFF\xFF\xFF\xFF'
+    with open(filename, 'wb') as fid:
+        for pmu in twix_scan['pmu']:
+            index = pmu.data.find(pmu_end)
+            index = index + 4 if index > 0 else -1
+            fid.write(pmu.data[0:index])
