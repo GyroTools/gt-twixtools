@@ -16,12 +16,11 @@ The tool works under Python 3.7 with the following package installed:
 
 ### Installation
 
-Navigate to the twixtools folder in an open terminal and install twixtools with pip:
+Use [pip](https://pip.pypa.io/en/stable/) to install the twixtools.
 
-    pip install .
-
-Installation through `python setup.py install` is currently not possible.
-
+```bash
+pip install gt-twixtools
+```
 
 ### Demo code
 
@@ -102,6 +101,20 @@ def import_kspace(mdb_list)
         out[mdb.cPar, mdb.cLin] += mdb.data
 
     return out  # 4D numpy array [n_part, n_line, n_channel, n_column]
+```
+
+### Extract the PMU data
+The physiological data (PMU) can be extracted from the twix-file with the following command:
+
+```python
+import twixtools
+multi_twix = twixtools.read_twix(filename, parse_pmu=True, parse_data=False)
+```
+
+The pmu data will be stored in `multi_twix[scan_r]['pmu']`. It can be written into a file with:
+
+```
+twixtools.write_pmu(multi_twix[scan_nr], outfile)
 ```
 
 ## map_twix: "high level" access to twix data
