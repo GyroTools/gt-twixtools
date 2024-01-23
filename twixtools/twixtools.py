@@ -15,6 +15,7 @@ import twixtools.helpers as helpers
 import twixtools.mdb
 import twixtools.hdr_def as hdr_def
 import twixtools.geometry
+from twixtools.pmu import _process_pmu
 
 
 def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
@@ -75,6 +76,7 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
     fid.seek(0, os.SEEK_END)
     fileSize = np.uint64(fid.tell())
     version_is_ve, NScans = helpers.idea_version_check(fid)
+    pmu_end = b'\xFF\xFF\xFF\xFF'
 
     out = list()
     # lazy software version check (VB or VD?)
@@ -133,7 +135,7 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
         hdr_len = meas_init["hdr_len"]
         out.append(dict())
         out[-1]['mdb'] = list()
-        out[-1]['pmu'] = list()
+        pmu_raw = list()
         if parse_prot:
             fid.seek(pos, os.SEEK_SET)
             hdr = twixprot.parse_twix_hdr(fid)
@@ -170,7 +172,9 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
             packet_id = mdb.data[4:mdb.data.find(b'\x00', 4)].decode('ascii') if len(mdb.data) > 60 else ''
             is_pmu = packet_id == 'PMUData' or packet_id == 'PMULearnPhase'
             if is_pmu and parse_pmu:
-                out[-1]['pmu'].append(mdb)
+                index = mdb.data.find(pmu_end)
+                index = index + 4 if index > 0 else -1
+                pmu_raw.append(mdb.data[0:index])
 
             # jump to mdh of next scan
             pos += mdb.dma_len
@@ -190,6 +194,9 @@ def read_twix(infile, include_scans=None, parse_prot=True, parse_data=True,
 
             if mdb.is_flag_set('ACQEND'):
                 break
+
+        if len(pmu_raw) > 0:
+            out[-1]['pmu'] = _process_pmu(pmu_raw)
 
         if verbose:
             progress_bar.close()
@@ -368,10 +375,32 @@ def del_from_mdb_list(mdb_list, function):
     return
 
 
-def write_pmu(twix_scan: dict, filename: str):
-    pmu_end = b'\xFF\xFF\xFF\xFF'
-    with open(filename, 'wb') as fid:
-        for pmu in twix_scan['pmu']:
-            index = pmu.data.find(pmu_end)
-            index = index + 4 if index > 0 else -1
-            fid.write(pmu.data[0:index])
+class TwixPars:
+    def __init__(self, data):
+        self.data = data
+
+    def __getattr__(self, attr):
+        if attr in self.data:
+            value = self.data[attr]
+            if isinstance(value, dict):
+                return TwixPars(value)
+            else:
+                return value
+        else:
+            return None
+
+    def get(self, name, default=None, data=None):
+        data = self.data if data is None else data
+        for key, value in data.items():
+            if key == name:
+                return value
+            elif isinstance(value, dict):
+                result = self.get(name, default, value)
+                if result is not None:
+                    return result
+        return default
+
+
+def read_hdr(infile, include_scans=None, verbose=False):
+    multi_twix = twixtools.read_twix(infile, include_scans=include_scans, parse_data=False, verbose=verbose)
+    return [TwixPars(scan['hdr']) for scan in multi_twix]
