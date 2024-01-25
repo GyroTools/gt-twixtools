@@ -111,8 +111,23 @@ import twixtools
 multi_twix = twixtools.read_twix(filename, parse_pmu=True, parse_data=False)
 ```
 
-The pmu data will be stored in `multi_twix[scan_r]['pmu']`. It can be written into a file with:
+The pmu data will be stored in `multi_twix[scan_r]['pmu']` as dict where every key corresponds to a different physiological sinal:
 
+```python
+# get the first ecg channel
+ecg1 = multi_twix[-1]['pmu']['ecg1']
+
+# get the respiratory motion
+resp1 = multi_twix[-1]['pmu']['resp1']
+
+# get the pulse plethysmograph
+pulse = multi_twix[-1]['pmu']['pulse']
+
+# get the ECG learning data
+ecg1_learn = multi_twix[-1]['pmu']['learn']['ecg1']
+```
+
+The pmu data can be written into a file with:
 ```
 twixtools.write_pmu(multi_twix[scan_nr], outfile)
 ```
